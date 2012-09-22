@@ -25,9 +25,11 @@ PY3 = sys.version_info[0] >= 3
 if PY3:
     basestring = unicode = str
     iteritems = operator.methodcaller("items")
+    from urllib.parse import unquote
 else:
     from itertools import izip as zip
     iteritems = operator.methodcaller("iteritems")
+    from urllib import unquote
 
 
 def _uniq(container):
@@ -548,13 +550,38 @@ class Validator(object):
             ):
                 yield error
 
+    def validate_ref(self, ref, instance, schema):
+        if ref.startswith("#"):
+            parts = ref[1:].split("/")
+            if parts.pop(0) != '':
+                warnings.warn("jsonschema only supports json-pointer $refs")
+                return
+
+            parts = map(unquote, parts)
+            parts = [part.replace('~1', '/').replace('~0', '~')
+                     for part in parts]
+            pointer = schema # TODO: Ahh, how do we get the root schema here?
+            try:
+                for part in parts:
+                    pointer = pointer[part]
+            except KeyError:
+                yield SchemaError("Unresolvable json-pointer %r" % ref)
+            else:
+                for error in self.iter_errors(
+                    instance, pointer, meta_validate=False
+                ):
+                    yield error
+        else:
+            warnings.warn("jsonschema only supports json-pointer $refs")
+
+
 
 for no_op in [                                  # handled in:
     "required",                                 # properties
     "exclusiveMinimum", "exclusiveMaximum",     # min*/max*
     "default", "description", "format", "id",   # no validation needed
     "links", "name", "title",
-    "ref", "schema",                            # not yet supported
+    "schema",                                   # not yet supported
 ]:
     setattr(Validator, "validate_" + no_op, lambda *args, **kwargs : None)
 

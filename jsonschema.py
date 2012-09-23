@@ -237,6 +237,7 @@ class Validator(object):
         self._types = dict(self.DEFAULT_TYPES)
         self._types.update(types)
         self._types["any"] = tuple(self._types.values())
+        self._root_schema = None
 
     def is_type(self, instance, type):
         """
@@ -310,19 +311,28 @@ class Validator(object):
                 # I think we're safer raising these always, not yielding them
                 raise s
 
-        for k, v in iteritems(schema):
-            validator = getattr(self, "validate_%s" % (k.lstrip("$"),), None)
+        # Hack to be able to access root schema from $ref validator
+        is_root_schema = False
+        if self._root_schema is None:
+            self._root_schema = schema
+            is_root_schema = True
+        try:
+            for k, v in iteritems(schema):
+                validator = getattr(self, "validate_%s" % (k.lstrip("$"),), None)
 
-            if validator is None:
-                errors = self.unknown_property(k, instance, schema)
-            else:
-                errors = validator(v, instance, schema)
+                if validator is None:
+                    errors = self.unknown_property(k, instance, schema)
+                else:
+                    errors = validator(v, instance, schema)
 
-            for error in errors or ():
-                # if the validator hasn't already been set (due to recursion)
-                # make sure to set it
-                error.validator = error.validator or k
-                yield error
+                for error in errors or ():
+                    # if the validator hasn't already been set (due to recursion)
+                    # make sure to set it
+                    error.validator = error.validator or k
+                    yield error
+        finally:
+            if is_root_schema:
+                self._root_schema = None
 
     def validate(self, *args, **kwargs):
         """
@@ -347,7 +357,7 @@ class Validator(object):
             # check if the instance is valid under it
             if ((
                 self.is_type(type, "object") and
-                self.is_valid(instance, type)
+                self.is_valid(instance, type, meta_validate=False)
 
             # Or we have a type as a string, just check if the instance is that
             # type. Also, HACK: we can reach the `or` here if skip_types is
@@ -409,6 +419,8 @@ class Validator(object):
             yield ValidationError(error % _extras_msg(extras))
 
     def validate_dependencies(self, dependencies, instance, schema):
+        if not self.is_type(instance, "object"):
+            return
         for property, dependency in iteritems(dependencies):
             if property not in instance:
                 continue
@@ -536,7 +548,9 @@ class Validator(object):
 
     def validate_disallow(self, disallow, instance, schema):
         for disallowed in _list(disallow):
-            if self.is_valid(instance, {"type" : [disallowed]}):
+            if self.is_valid(
+                instance, {"type" : [disallowed]}, meta_validate=False
+            ):
                 yield ValidationError(
                     "%r is disallowed for %r" % (disallowed, instance)
                 )
@@ -560,7 +574,7 @@ class Validator(object):
             parts = map(unquote, parts)
             parts = [part.replace('~1', '/').replace('~0', '~')
                      for part in parts]
-            pointer = schema # TODO: Ahh, how do we get the root schema here?
+            pointer = self._root_schema
             try:
                 for part in parts:
                     pointer = pointer[part]

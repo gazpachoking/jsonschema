@@ -669,6 +669,23 @@ class TestValidate(ParameterizedTestCase, unittest.TestCase):
         errors = list(Validator().iter_errors(instance, schema))
         self.assertEqual(len(errors), 4)
 
+    root_pointer_ref = parametrized(
+        ("match", "valid", {"foo": False}),
+        ("recursive_match", "valid", {"foo": {"foo": False}}),
+        ("mismatch", "invalid", {"bar": False}),
+        ("recursive_mismatch", "invalid", {"foo": {"bar": False}})
+    )(validation_test(
+        properties={"foo": {"$ref": "#"}}, additionalProperties=False)
+    )
+
+    relative_pointer_ref = parametrized(
+        ("match", "valid", {"bar": 3}),
+        ("mismatch", "invalid", {"bar": True})
+    )(validation_test(
+        properties={"foo": {"type": "integer"},
+                    "bar": {"$ref": "#/properties/foo"}}
+    ))
+
 
 class TestValidationErrorDetails(unittest.TestCase):
     # TODO: These really need unit tests for each individual validator, rather

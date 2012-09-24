@@ -202,8 +202,8 @@ class Validator(object):
     }
 
     def __init__(
-        self, version=DRAFT_3, unknown_type="skip",
-        unknown_property="skip", types=(),
+        self, schema, meta_schema=DRAFT_3, unknown_type="skip",
+        unknown_property="skip", types=(), meta_validate=True,
     ):
         """
         Initialize a Validator.
@@ -232,12 +232,28 @@ class Validator(object):
 
         self._unknown_type = unknown_type
         self._unknown_property = unknown_property
-        self._version = version
+        self._meta_schema = meta_schema
 
         self._types = dict(self.DEFAULT_TYPES)
         self._types.update(types)
         self._types["any"] = tuple(self._types.values())
-        self._root_schema = None
+        if schema:
+            self.set_schema(schema, meta_validate=meta_validate)
+
+    def set_schema(self, schema, meta_validate=True):
+        try:
+            if meta_validate:
+                self.schema = self._meta_schema
+                for error in self.iter_errors(
+                    schema, self._meta_schema, meta_validate=False
+                ):
+                    s = SchemaError(error.message)
+                    s.path = error.path
+                    s.validator = error.validator
+                    # I think we're safer raising these always, not yielding them
+                    raise s
+        finally:
+            self.schema = schema
 
     def is_type(self, instance, type):
         """
@@ -276,7 +292,7 @@ class Validator(object):
         else:
             raise SchemaError(msg)
 
-    def is_valid(self, instance, schema, meta_validate=True):
+    def is_valid(self, instance, schema=None, meta_validate=True):
         """
         Check if the ``instance`` is valid under the ``schema``.
 
@@ -284,10 +300,12 @@ class Validator(object):
 
         """
 
-        error = next(self.iter_errors(instance, schema, meta_validate), None)
+        schema = schema or self.schema
+
+        error = next(self.iter_errors(instance, schema), None)
         return error is None
 
-    def iter_errors(self, instance, schema, meta_validate=True):
+    def iter_errors(self, instance, schema=None, meta_validate=True):
         """
         Lazily yield each of the errors in the given ``instance``.
 
@@ -301,38 +319,21 @@ class Validator(object):
 
         """
 
-        if meta_validate:
-            for error in self.iter_errors(
-                schema, self._version, meta_validate=False
-            ):
-                s = SchemaError(error.message)
-                s.path = error.path
-                s.validator = error.validator
-                # I think we're safer raising these always, not yielding them
-                raise s
+        schema = schema or self.schema
 
-        # Hack to be able to access root schema from $ref validator
-        is_root_schema = False
-        if self._root_schema is None:
-            self._root_schema = schema
-            is_root_schema = True
-        try:
-            for k, v in iteritems(schema):
-                validator = getattr(self, "validate_%s" % (k.lstrip("$"),), None)
+        for k, v in iteritems(schema):
+            validator = getattr(self, "validate_%s" % (k.lstrip("$"),), None)
 
-                if validator is None:
-                    errors = self.unknown_property(k, instance, schema)
-                else:
-                    errors = validator(v, instance, schema)
+            if validator is None:
+                errors = self.unknown_property(k, instance, schema)
+            else:
+                errors = validator(v, instance, schema)
 
-                for error in errors or ():
-                    # if the validator hasn't already been set (due to recursion)
-                    # make sure to set it
-                    error.validator = error.validator or k
-                    yield error
-        finally:
-            if is_root_schema:
-                self._root_schema = None
+            for error in errors or ():
+                # if the validator hasn't already been set (due to recursion)
+                # make sure to set it
+                error.validator = error.validator or k
+                yield error
 
     def validate(self, *args, **kwargs):
         """
@@ -573,7 +574,7 @@ class Validator(object):
             parts = map(unquote, parts)
             parts = [part.replace('~1', '/').replace('~0', '~')
                      for part in parts]
-            pointer = self._root_schema
+            pointer = self.schema
             try:
                 for part in parts:
                     pointer = pointer[part]
@@ -699,7 +700,7 @@ def _delist(thing):
 
 
 def validate(
-    instance, schema, meta_validate=True, cls=Validator, *args, **kwargs
+    instance, schema, cls=Validator, *args, **kwargs
 ):
     """
     Validate an ``instance`` under the given ``schema``.
@@ -714,5 +715,5 @@ def validate(
 
     """
 
-    validator = cls(*args, **kwargs)
-    validator.validate(instance, schema, meta_validate=meta_validate)
+    validator = cls(schema, *args, **kwargs)
+    validator.validate(instance)

@@ -568,7 +568,7 @@ class TestValidate(ParameterizedTestCase, unittest.TestCase):
             ])
 
         self.assertEqual(
-            sorted(str(e) for e in Validator().iter_errors(instance, schema)),
+            sorted(str(e) for e in Validator(schema).iter_errors(instance)),
             errors,
         )
 
@@ -635,7 +635,7 @@ class TestValidate(ParameterizedTestCase, unittest.TestCase):
             }
         }
 
-        errors = list(Validator().iter_errors(instance, schema))
+        errors = list(Validator(schema).iter_errors(instance))
         self.assertEqual(len(errors), 4)
 
     root_pointer_ref = parametrized(
@@ -728,7 +728,7 @@ class TestValidationErrorDetails(unittest.TestCase):
             }
         }
 
-        errors = Validator().iter_errors(instance, schema)
+        errors = Validator(schema).iter_errors(instance)
         e1, e2, e3, e4 = sorted_errors(errors)
 
         self.assertEqual(e1.path, ["bar"])
@@ -760,7 +760,7 @@ class TestValidationErrorDetails(unittest.TestCase):
             }
         }
 
-        errors = Validator().iter_errors(instance, schema)
+        errors = Validator(schema).iter_errors(instance)
         e1, e2, e3, e4, e5, e6 = sorted_errors(errors)
 
         self.assertEqual(e1.path, [])
@@ -798,7 +798,7 @@ class TestErrorTree(unittest.TestCase):
             }
         }
 
-        errors = sorted_errors(Validator().iter_errors(instance, schema))
+        errors = sorted_errors(Validator(schema).iter_errors(instance))
         e1, e2, e3, e4, e5, e6 = errors
         tree = ErrorTree(errors)
 

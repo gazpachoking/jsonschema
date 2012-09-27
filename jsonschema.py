@@ -403,8 +403,7 @@ class Validator(object):
         if not self.is_type(instance, "object"):
             return
 
-        # no viewkeys in <2.7, and pypy seems to fail on vk - vk anyhow, so...
-        extras = set(instance) - set(schema.get("properties", {}))
+        extras = set(_find_additional_properties(instance, schema))
 
         if self.is_type(aP, "object"):
             for extra in extras:
@@ -451,6 +450,8 @@ class Validator(object):
     def validate_additionalItems(self, aI, instance, schema):
         if not self.is_type(instance, "array"):
             return
+        if not self.is_type(schema.get("items"), "array"):
+            return
 
         if self.is_type(aI, "object"):
             for item in instance[len(schema):]:
@@ -459,7 +460,7 @@ class Validator(object):
         elif not aI and len(instance) > len(schema.get("items", [])):
             error = "Additional items are not allowed (%s %s unexpected)"
             yield ValidationError(
-                error % _extras_msg(instance[len(schema) - 1:])
+                error % _extras_msg(instance[len(schema.get("items", [])):])
             )
 
     def validate_minimum(self, minimum, instance, schema):
@@ -619,6 +620,26 @@ class ErrorTree(object):
 
     def __repr__(self):
         return "<%s (%s errors)>" % (self.__class__.__name__, len(self))
+
+
+def _find_additional_properties(instance, schema):
+    """
+    Return the set of additional properties for the given ``instance``.
+
+    Weeds out properties that should have been validated by ``properties`` and
+    / or ``patternProperties``.
+
+    Assumes ``instance`` is dict-like already.
+
+    """
+
+    properties = schema.get("properties", {})
+    patterns = "|".join(schema.get("patternProperties", {}))
+    for property in instance:
+        if property not in properties:
+            if patterns and re.search(patterns, property):
+                continue
+            yield property
 
 
 def _extras_msg(extras):

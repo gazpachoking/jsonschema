@@ -303,10 +303,7 @@ class Validator(object):
         else:
             raise SchemaError(msg)
 
-    def is_valid(self, instance):
-        return self._is_valid(instance, self.schema)
-
-    def _is_valid(self, instance, schema):
+    def is_valid(self, instance, schema=None):
         """
         Check if the ``instance`` is valid under this validator`s schema.
 
@@ -314,23 +311,18 @@ class Validator(object):
 
         """
 
-        error = next(self._iter_errors(instance, schema), None)
+        schema = schema or self.schema
+        error = next(self.iter_errors(instance, schema), None)
         return error is None
 
-    def iter_errors(self, instance):
-        """
-        Lazily yield each of the errors in the given ``instance``.
-
-        """
-
-        return (error for error in self._iter_errors(instance, self.schema))
-
-    def _iter_errors(self, instance, schema):
+    def iter_errors(self, instance, schema=None):
         """
         Lazily yield each of the errors in the given ``instance`` for the
         given ``schema``.
 
         """
+
+        schema = schema or self.schema
 
         for k, v in iteritems(schema):
             validator = getattr(self, "validate_%s" % (k.lstrip("$"),), None)
@@ -369,7 +361,7 @@ class Validator(object):
             # check if the instance is valid under it
             if ((
                 self.is_type(type, "object") and
-                self._is_valid(instance, type)
+                self.is_valid(instance, type)
 
             # Or we have a type as a string, just check if the instance is that
             # type. Also, HACK: we can reach the `or` here if skip_types is
@@ -389,7 +381,7 @@ class Validator(object):
 
         for property, subschema in iteritems(properties):
             if property in instance:
-                for error in self._iter_errors(instance[property], subschema):
+                for error in self.iter_errors(instance[property], subschema):
                     error.path.append(property)
                     yield error
             elif subschema.get("required", False):
@@ -404,7 +396,7 @@ class Validator(object):
         for pattern, subschema in iteritems(patternProperties):
             for k, v in iteritems(instance):
                 if re.match(pattern, k):
-                    for error in self._iter_errors(v, subschema):
+                    for error in self.iter_errors(v, subschema):
                         yield error
 
     def validate_additionalProperties(self, aP, instance, schema):
@@ -416,7 +408,7 @@ class Validator(object):
 
         if self.is_type(aP, "object"):
             for extra in extras:
-                for error in self._iter_errors(instance[extra], aP):
+                for error in self.iter_errors(instance[extra], aP):
                     yield error
         elif not aP and extras:
             error = "Additional properties are not allowed (%s %s unexpected)"
@@ -431,7 +423,7 @@ class Validator(object):
                 continue
 
             if self.is_type(dependency, "object"):
-                for error in self._iter_errors(instance, dependency):
+                for error in self.iter_errors(instance, dependency):
                     yield error
             else:
                 dependencies = _list(dependency)
@@ -447,12 +439,12 @@ class Validator(object):
 
         if self.is_type(items, "object"):
             for index, item in enumerate(instance):
-                for error in self._iter_errors(item, items):
+                for error in self.iter_errors(item, items):
                     error.path.append(index)
                     yield error
         else:
             for (index, item), subschema in zip(enumerate(instance), items):
-                for error in self._iter_errors(item, subschema):
+                for error in self.iter_errors(item, subschema):
                     error.path.append(index)
                     yield error
 
@@ -462,7 +454,7 @@ class Validator(object):
 
         if self.is_type(aI, "object"):
             for item in instance[len(schema):]:
-                for error in self._iter_errors(item, aI):
+                for error in self.iter_errors(item, aI):
                     yield error
         elif not aI and len(instance) > len(schema.get("items", [])):
             error = "Additional items are not allowed (%s %s unexpected)"
@@ -547,7 +539,7 @@ class Validator(object):
 
     def validate_disallow(self, disallow, instance, schema):
         for disallowed in _list(disallow):
-            if self._is_valid(instance, {"type" : [disallowed]}):
+            if self.is_valid(instance, {"type" : [disallowed]}):
                 yield ValidationError(
                     "%r is disallowed for %r" % (disallowed, instance)
                 )
@@ -556,7 +548,7 @@ class Validator(object):
         if self.is_type(extends, "object"):
             extends = [extends]
         for subschema in extends:
-            for error in self._iter_errors(instance, subschema):
+            for error in self.iter_errors(instance, subschema):
                 yield error
 
     def validate_ref(self, ref, instance, schema):
@@ -576,7 +568,7 @@ class Validator(object):
             except KeyError:
                 yield SchemaError("Unresolvable json-pointer %r" % ref)
             else:
-                for error in self._iter_errors(instance, pointer):
+                for error in self.iter_errors(instance, pointer):
                     yield error
         else:
             warnings.warn("jsonschema only supports json-pointer $refs")

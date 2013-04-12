@@ -221,6 +221,14 @@ class TestDraft4(
             # needs to be an integer
             validate([1], {"minItems" : "1"}, cls=self.validator_class)
 
+    def test_metaschema_disallows_custom_types(self):
+        with self.assertRaises(SchemaError):
+            self.validator_class.check_schema({"type": "float"})
+
+    def test_custom_types_override_types_metaschema(self):
+        validator = self.validator_class({}, types={"float": float})
+        validator.check_schema({"type": "float"})
+
 
 class RemoteRefResolutionMixin(object):
     def setUp(self):

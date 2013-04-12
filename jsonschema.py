@@ -13,6 +13,7 @@ from __future__ import division, unicode_literals
 
 import collections
 import contextlib
+import copy
 import datetime
 import itertools
 import json
@@ -21,7 +22,7 @@ import operator
 import re
 import socket
 import sys
-import textwrap
+from types import MethodType
 
 try:
     from collections import MutableMapping
@@ -625,6 +626,20 @@ class Draft4Validator(ValidatorMixin, _Draft34CommonMixin, object):
     A validator for JSON Schema draft 4.
 
     """
+
+    def __init__(self, *args, **kwargs):
+        super(Draft4Validator, self).__init__(*args, **kwargs)
+        if any(t not in self.DEFAULT_TYPES for t in self._types):
+            self.META_SCHEMA = copy.deepcopy(self.META_SCHEMA)
+            self.META_SCHEMA["properties"]["type"] = {
+                "type": ["string", "array"],
+                "items": {"type": "string"}
+            }
+        def check_schema(self, schema):
+            for error in self.iter_errors(schema, _schema=self.META_SCHEMA):
+                raise SchemaError.create_from(error)
+        self.check_schema = MethodType(check_schema, self)
+
 
     def validate_type(self, types, instance, schema):
         types = _list(types)

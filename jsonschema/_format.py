@@ -34,7 +34,7 @@ class FormatChecker(object):
         else:
             self.checkers = dict((k, self.checkers[k]) for k in formats)
 
-    def checks(self, format, raises=()):
+    def checks(self, format, raises=(), types=None):
         """
         Register a decorated function as validating a new format.
 
@@ -45,9 +45,11 @@ class FormatChecker(object):
             of the resulting validation error.
 
         """
-
+        # Most checkers work on just strings, default to that
+        if not types:
+            types = ['string']
         def _checks(func):
-            self.checkers[format] = (func, raises)
+            self.checkers[format] = (func, raises, types)
             return func
         return _checks
 
@@ -67,7 +69,10 @@ class FormatChecker(object):
         if format not in self.checkers:
             return
 
-        func, raises = self.checkers[format]
+        func, raises, types = self.checkers[format]
+        # Crap, we don't have validator.is_type here, need to think about that
+        if not any(valitator.is_type(instance, t) for t in types):
+            return
         result, cause = None, None
         try:
             result = func(instance)

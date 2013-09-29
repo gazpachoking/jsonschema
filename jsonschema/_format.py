@@ -55,6 +55,12 @@ class FormatChecker(object):
 
     cls_checks = classmethod(checks)
 
+    def checks_types(self, format):
+        if format not in self.checkers:
+            return
+        func, raises, types = self.checkers[format]
+        return types
+
     def check(self, instance, format):
         """
         Check whether the instance conforms to the given format.
@@ -70,9 +76,6 @@ class FormatChecker(object):
             return
 
         func, raises, types = self.checkers[format]
-        # Crap, we don't have validator.is_type here, need to think about that
-        if not any(valitator.is_type(instance, t) for t in types):
-            return
         result, cause = None, None
         try:
             result = func(instance)

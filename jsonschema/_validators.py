@@ -151,10 +151,12 @@ def pattern(validator, patrn, instance, schema):
 
 def format(validator, format, instance, schema):
     if validator.format_checker is not None:
-        try:
-            validator.format_checker.check(instance, format)
-        except FormatError as error:
-            yield ValidationError(error.message, cause=error.cause)
+        checks_types = validator.format_checker.checks_types(format)
+        if any(validator.is_type(instance, t) for t in checks_types):
+            try:
+                validator.format_checker.check(instance, format)
+            except FormatError as error:
+                yield ValidationError(error.message, cause=error.cause)
 
 
 def minLength(validator, mL, instance, schema):
